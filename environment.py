@@ -253,13 +253,14 @@ class FlappyGame:
             if not crashTest[1]:
                 self.SOUNDS["die"].play()
             reward = -1  # Penalty for crashing
-            self.reset()
+            # self.reset() # The game reset is now handled by the game loop
 
-        # --- Drawing ---
-        if draw:
-            self._draw_game_state()
-            pygame.display.update()
-            self.FPSCLOCK.tick(FPS)
+        # The drawing logic is now handled by the caller loop
+        # to prevent screen flickering and allow for more complex drawing.
+        # if draw:
+        #     self._draw_game_state()
+        #     pygame.display.update()
+        #     self.FPSCLOCK.tick(FPS)
 
         return self._get_state(), reward, done
 
@@ -346,8 +347,27 @@ class FlappyGame:
 
 def run_manual_play(game=None):
     """Function to run the game for a human player."""
+    # This import is local to the function to avoid circular dependencies,
+    # as main.py imports this function.
+    from main import Button
+
+    # --- Game and High Score Initialization ---
     game = FlappyGame()  # Create a new game instance for manual play
-    game.reset()
+
+    # High score logic
+    high_score = 0
+    highscore_file = "highscore.txt"
+
+    # Load high score
+    try:
+        if os.path.exists(highscore_file):
+            with open(highscore_file, "r") as f:
+                content = f.read()
+                if content:
+                    high_score = int(content)
+    except (IOError, ValueError):
+        print(f"Error reading {highscore_file}, starting high score at 0.")
+        high_score = 0
 
     playerIndex = 0
     playerIndexGen = cycle([0, 1, 2, 1])
@@ -360,6 +380,7 @@ def run_manual_play(game=None):
     baseShift = game.IMAGES["base"].get_width() - game.IMAGES["background"].get_width()
     playerShmVals = {"val": 0, "dir": 1}
 
+    # --- Welcome Screen Loop ---
     welcome = True
     while welcome:
         for event in pygame.event.get():
@@ -392,35 +413,118 @@ def run_manual_play(game=None):
         pygame.display.update()
         game.FPSCLOCK.tick(FPS)
 
-    # Main game loop
-    while True:
-        action = 0
-        for event in pygame.event.get():
-            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
-                pygame.quit()
-                sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                action = 1
+    # --- Helper Functions for Drawing ---
+    def show_game_over_screen(final_score, current_high_score):
+        """Displays the game over screen with the final score."""
+        font = pygame.font.SysFont("Arial", 24, bold=True)
+        final_score_label = font.render(
+            f"Your Score: {final_score}", 1, (255, 255, 255)
+        )
+        high_score_label = font.render(
+            f"High Score: {current_high_score}", 1, (255, 255, 255)
+        )
+        game.SCREEN.blit(
+            final_score_label,
+            (SCREENWIDTH / 2 - final_score_label.get_width() / 2, 240),
+        )
+        game.SCREEN.blit(
+            high_score_label, (SCREENWIDTH / 2 - high_score_label.get_width() / 2, 280)
+        )
 
-        state, reward, done = game.frame_step(action)
+    def show_high_score(score):
+        """Displays the high score."""
+        font = pygame.font.SysFont("Arial", 24, bold=True)
+        score_label = font.render(f"High Score: {score}", 1, (255, 255, 255))
+        game.SCREEN.blit(score_label, (10, 10))
 
-        if done:
-            # Show game over screen and wait for input to return to menu
-            game.SCREEN.blit(game.IMAGES["gameover"], (50, 180))
+    # =================================
+    # Outer loop to allow for restarting the game
+    # =================================
+    while True:  # This loop allows restarting the game
+        game.reset()
+        # Main game loop for a single playthrough
+        while True:
+            action = 0
+            for event in pygame.event.get():
+                if event.type == QUIT or (
+                    event.type == KEYDOWN and event.key == K_ESCAPE
+                ):
+                    pygame.quit()
+                    sys.exit()
+                if event.type == KEYDOWN and (
+                    event.key == K_SPACE or event.key == K_UP
+                ):
+                    action = 1
+
+            state, reward, done = game.frame_step(action, draw=False)
+
+            # --- Drawing ---
+            game._draw_game_state()
+            show_high_score(high_score)
             pygame.display.update()
-            waiting = True
-            while waiting:
-                for event in pygame.event.get():
-                    if event.type == QUIT or (
-                        event.type == KEYDOWN and event.key == K_ESCAPE
-                    ):
-                        pygame.quit()
-                        sys.exit()
-                    if event.type == KEYDOWN and (
-                        event.key == K_SPACE or event.key == K_UP
-                    ):
-                        waiting = False
-            return  # Return to main menu
+            game.FPSCLOCK.tick(FPS)
+
+            if done:
+                # Update and save high score if necessary
+                if game.score > high_score:
+                    high_score = game.score
+                    try:
+                        with open(highscore_file, "w") as f:
+                            f.write(str(high_score))
+                    except IOError:
+                        print(f"Error writing to {highscore_file}.")
+
+                # --- Game Over Screen ---
+                restart_button = Button(
+                    SCREENWIDTH / 2 - 140,
+                    320,
+                    120,
+                    50,
+                    "Restart",
+                    (253, 187, 46),
+                    (255, 215, 0),
+                )
+                menu_button = Button(
+                    SCREENWIDTH / 2 + 20,
+                    320,
+                    120,
+                    50,
+                    "Menu",
+                    (200, 200, 200),
+                    (230, 230, 230),
+                )
+                buttons = [restart_button, menu_button]
+
+                game.SCREEN.blit(game.IMAGES["gameover"], (50, 180))
+                show_game_over_screen(game.score, high_score)
+                for button in buttons:
+                    button.draw(game.SCREEN)
+                pygame.display.update()
+
+                waiting = True
+                while waiting:
+                    for event in pygame.event.get():
+                        if event.type == QUIT or (
+                            event.type == KEYDOWN and event.key == K_ESCAPE
+                        ):
+                            pygame.quit()
+                            sys.exit()
+
+                        # Handle button clicks
+                        if restart_button.handle_event(event):
+                            waiting = (
+                                False  # Will break and restart the inner game loop
+                            )
+                        elif menu_button.handle_event(event):
+                            return  # Exit run_manual_play to go back to the main menu
+
+                    # Redraw buttons to show hover effect
+                    for button in buttons:
+                        button.draw(game.SCREEN)
+                    pygame.display.update()
+                    game.FPSCLOCK.tick(15)  # Lower tick rate for menu
+
+                break  # Breaks from the inner game loop to restart
 
 
 def run_q_learning():
