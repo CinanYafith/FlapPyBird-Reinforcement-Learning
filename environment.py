@@ -81,9 +81,32 @@ class FlappyGame:
         else:
             soundExt = ".ogg"
 
-        SOUNDS["die"] = pygame.mixer.Sound(
-            os.path.join(ASSETS_PATH, "audio/die" + soundExt)
-        )
+        # --- Custom death sound loading ---
+        # Try to load a custom death sound from the user's Downloads folder.
+        # If it fails, load the default sound.
+        custom_sound_name = "phillipinte-pari-prithviraj-meme.mp3"
+        custom_sound_path = None
+        try:
+            # A reliable way to get the user's home directory
+            home_dir = os.path.expanduser("~")
+            downloads_path = os.path.join(home_dir, "Downloads")
+            potential_path = os.path.join(downloads_path, custom_sound_name)
+            if os.path.exists(potential_path):
+                custom_sound_path = potential_path
+                print(f"Loading custom death sound from: {custom_sound_path}")
+        except Exception as e:
+            print(f"Could not check for custom death sound: {e}")
+
+        if custom_sound_path:
+            SOUNDS["die"] = pygame.mixer.Sound(custom_sound_path)
+            SOUNDS["die"].set_volume(1.0)  # Set to maximum volume
+        else:
+            SOUNDS["die"] = pygame.mixer.Sound(
+                os.path.join(ASSETS_PATH, "audio/die" + soundExt)
+            )
+            # Also set default sound volume just in case
+            SOUNDS["die"].set_volume(1.0)
+
         SOUNDS["hit"] = pygame.mixer.Sound(
             os.path.join(ASSETS_PATH, "audio/hit" + soundExt)
         )
