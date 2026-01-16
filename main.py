@@ -1,7 +1,7 @@
 from itertools import cycle
 import random
 import sys
-from environment import FlappyGame, run_manual_play, run_q_learning
+from environment import FlappyGame, run_manual_play
 import pygame
 import os
 import neat
@@ -18,6 +18,7 @@ BASEY = SCREENHEIGHT * 0.79
 
 # Generation counter
 GEN = 0
+FAST_MODE = False
 
 
 class BackToMenuException(Exception):
@@ -157,19 +158,8 @@ def main_menu():
         HOVER_YELLOW,
         border_color=BROWN_BORDER,
     )
-    q_learning_button = Button(
-        button_x,
-        340,
-        button_width,
-        button_height,
-        "Watch Q-Learning",
-        BIRD_YELLOW,
-        HOVER_YELLOW,
-        text_color=(0, 0, 0),
-        border_color=BROWN_BORDER,
-    )
 
-    buttons = [neat_button, manual_button, q_learning_button]
+    buttons = [neat_button, manual_button]
 
     run_game = True
     while run_game:
@@ -195,11 +185,15 @@ def main_menu():
                     if button == neat_button:
                         local_dir = os.path.dirname(__file__)
                         config_path = os.path.join(local_dir, "config-feedforward.txt")
-                        run_neat(config_path, game_env)
+                        if os.path.exists(config_path):
+                            try:
+                                run_neat(config_path, game_env)
+                            except Exception as e:
+                                print(f"Error running NEAT: {e}")
+                        else:
+                            print(f"Config file not found: {config_path}")
                     elif button == manual_button:
                         run_manual_play()
-                    elif button == q_learning_button:
-                        run_q_learning()
 
     pygame.quit()
     sys.exit()
@@ -212,6 +206,7 @@ def eval_genomes(genomes, config):
     reach in the game.
     """
     global GEN
+    global GEN, FAST_MODE
     GEN += 1
 
     # start by creating lists holding the genome itself, the
@@ -277,6 +272,22 @@ def eval_genomes(genomes, config):
         border_color=(30, 30, 30, 220),  # Darker border
     )
 
+    fast_forward_button = Button(
+        60,
+        10,
+        40,
+        40,
+        ">>",
+        (50, 50, 50, 180),
+        (100, 100, 100, 180),
+        text_color=(255, 255, 255),
+        border_color=(30, 30, 30, 220),
+    )
+
+    if FAST_MODE:
+        fast_forward_button.color = (0, 150, 0, 180)
+        fast_forward_button.hover_color = (0, 200, 0, 180)
+
     run = True
     while run and len(birds) > 0:
         for event in pygame.event.get():
@@ -286,6 +297,14 @@ def eval_genomes(genomes, config):
                 sys.exit()
             if back_button.handle_event(event):  # Raise exception to exit training
                 raise BackToMenuException()
+            if fast_forward_button.handle_event(event):
+                FAST_MODE = not FAST_MODE
+                if FAST_MODE:
+                    fast_forward_button.color = (0, 150, 0, 180)
+                    fast_forward_button.hover_color = (0, 200, 0, 180)
+                else:
+                    fast_forward_button.color = (50, 50, 50, 180)
+                    fast_forward_button.hover_color = (100, 100, 100, 180)
 
         pipe_ind = 0
         if len(birds) > 0:
@@ -412,9 +431,13 @@ def eval_genomes(genomes, config):
         )
 
         back_button.draw(game_env.SCREEN)
+        fast_forward_button.draw(game_env.SCREEN)
 
         pygame.display.update()
-        game_env.FPSCLOCK.tick(FPS)
+        if FAST_MODE:
+            game_env.FPSCLOCK.tick(0)
+        else:
+            game_env.FPSCLOCK.tick(FPS)
 
 
 def getRandomPipe():
@@ -537,9 +560,16 @@ def run_neat(config_file, game):
     try:
         winner = p.run(eval_genomes, 50)
 
+        print("\nBest genome found! Fitness threshold reached.")
+
         # Generate learning graphs after training is complete
-        visualize.plot_stats(stats, ylog=False, view=False, filename="avg_fitness.svg")
-        visualize.plot_species(stats, view=False, filename="speciation.svg")
+        try:
+            visualize.plot_stats(
+                stats, ylog=False, view=False, filename="avg_fitness.svg"
+            )
+            visualize.plot_species(stats, view=False, filename="speciation.svg")
+        except Exception as e:
+            print(f"Warning: Could not generate graphs: {e}")
 
         # show final stats
         print("\nBest genome:\n{!s}".format(winner))
@@ -547,8 +577,21 @@ def run_neat(config_file, game):
         # Save the winner.
         with open("winner.pkl", "wb") as f:
             pickle.dump(winner, f)
+
+        # Wait for user input before returning
+        print("Press any key to return to menu...")
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == QUIT or event.type == KEYDOWN:
+                    waiting = False
     except BackToMenuException:
         print("--- NEAT Training Interrupted. Returning to menu. ---")
+        if stats.most_fit_genomes:
+            try:
+                visualize.plot_stats(stats, ylog=False, view=True, filename=None)
+            except Exception as e:
+                print(f"Error visualizing stats: {e}")
         return  # This will go back to the main_menu loop
 
 

@@ -40,7 +40,8 @@ def plot_stats(statistics, ylog=False, view=False, filename="avg_fitness.svg"):
     if ylog:
         plt.gca().set_yscale("symlog")
 
-    plt.savefig(filename)
+    if filename:
+        plt.savefig(filename)
     if view:
         plt.show()
 

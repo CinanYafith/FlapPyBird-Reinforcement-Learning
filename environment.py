@@ -346,6 +346,8 @@ class FlappyGame:
 
 def run_manual_play(game=None):
     """Function to run the game for a human player."""
+    from main import Button
+
     game = FlappyGame()  # Create a new game instance for manual play
     game.reset()
 
@@ -360,12 +362,26 @@ def run_manual_play(game=None):
     baseShift = game.IMAGES["base"].get_width() - game.IMAGES["background"].get_width()
     playerShmVals = {"val": 0, "dir": 1}
 
+    back_button = Button(
+        10,
+        10,
+        40,
+        40,
+        "<",
+        (50, 50, 50, 180),
+        (100, 100, 100, 180),
+        text_color=(255, 255, 255),
+        border_color=(30, 30, 30, 220),
+    )
+
     welcome = True
     while welcome:
         for event in pygame.event.get():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
+            if back_button.handle_event(event):
+                return
             if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
                 welcome = False
 
@@ -389,6 +405,7 @@ def run_manual_play(game=None):
         )
         game.SCREEN.blit(game.IMAGES["message"], (messagex, messagey))
         game.SCREEN.blit(game.IMAGES["base"], (basex, BASEY))
+        back_button.draw(game.SCREEN)
         pygame.display.update()
         game.FPSCLOCK.tick(FPS)
 
@@ -399,10 +416,16 @@ def run_manual_play(game=None):
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
+            if back_button.handle_event(event):
+                return
             if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
                 action = 1
 
-        state, reward, done = game.frame_step(action)
+        state, reward, done = game.frame_step(action, draw=False)
+        game._draw_game_state()
+        back_button.draw(game.SCREEN)
+        pygame.display.update()
+        game.FPSCLOCK.tick(FPS)
 
         if done:
             # Show game over screen and wait for input to return to menu
@@ -421,95 +444,3 @@ def run_manual_play(game=None):
                     ):
                         waiting = False
             return  # Return to main menu
-
-
-def run_q_learning():
-    """
-    This function runs the Q-Learning agent from flappy_rl.py
-    against the shared FlappyGame environment.
-    """
-    print("--- Starting Q-Learning Mode ---")
-
-    # This import is local to the function, so we need to import Button here
-    # A better long-term solution would be to have a shared utility file.
-    from main import Button
-
-    try:
-        # Assuming flappy_rl.py provides the Agent object
-        from flappy_rl import Agent as QLearningAgent
-    except ImportError:
-        print("Error: Could not import Q-Learning Agent from flappy_rl.py.")
-        print(
-            "Please ensure flappy_rl.py and its dependencies (config.py, q_learning.py) are in the directory."
-        )
-        pygame.time.wait(3000)  # Wait 3 seconds before returning to menu
-        return
-
-    game = FlappyGame()
-    max_episodes = 500  # You can adjust the number of training episodes
-
-    back_button = Button(  # Small arrow-like button
-        10,
-        10,
-        40,
-        40,
-        "<",
-        (50, 50, 50, 180),  # Semi-transparent dark grey
-        (100, 100, 100, 180),  # Lighter grey on hover
-        text_color=(255, 255, 255),
-        border_color=(30, 30, 30, 220),  # Darker border
-    )
-
-    while QLearningAgent.episode < max_episodes:
-        game.reset()
-        done = False
-        while not done:
-            # Allow quitting the game
-            game.SCREEN.blit(game.IMAGES["background"], (0, 0))  # Redraw background
-            for event in pygame.event.get():
-                if event.type == QUIT or (
-                    event.type == KEYDOWN and event.key == K_ESCAPE
-                ):
-                    QLearningAgent.save_qvalues()
-                    QLearningAgent.save_training_states()
-                    print("--- Q-Learning Training Interrupted. Progress Saved. ---")
-                    return  # Return to main menu
-                if back_button.handle_event(event):
-                    QLearningAgent.save_qvalues()
-                    QLearningAgent.save_training_states()
-                    print("--- Q-Learning Training Interrupted. Progress Saved. ---")
-                    return  # Return to main menu
-
-            # Q-learning agent decides action based on state
-            action = QLearningAgent.act(
-                game.playerx, game.playery, game.playerVelY, game.lowerPipes
-            )
-
-            # Game takes a step
-            _, _, done = game.frame_step(
-                action, draw=False
-            )  # Disable drawing in frame_step
-
-            # Manually draw elements to include the back button
-            game._draw_game_state()
-
-            # Agent learns
-            if done:
-                QLearningAgent.update_qvalues(game.score)
-                print(
-                    f"Episode: {QLearningAgent.episode}, score: {game.score}, max_score: {QLearningAgent.max_score}"
-                )
-
-            back_button.draw(game.SCREEN)
-            pygame.display.update()
-            game.FPSCLOCK.tick(FPS)
-
-    print("--- Q-Learning Training Finished ---")
-    QLearningAgent.save_qvalues()
-    QLearningAgent.save_training_states()
-    # Wait for a key press before returning to the menu
-    waiting = True
-    while waiting:
-        for event in pygame.event.get():
-            if event.type == QUIT or (event.type == KEYDOWN):
-                waiting = False
